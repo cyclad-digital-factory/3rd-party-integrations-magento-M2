@@ -2,14 +2,15 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Cron;
 
+use Emarsys\Emarsys\{
+    Model\Api\Api as EmarsysApiApi,
+    Helper\Event, Model\Logs
+};
 use Magento\Store\Model\StoreManagerInterface;
-use Emarsys\Emarsys\Model\Api\Api as EmarsysApiApi;
-use Emarsys\Emarsys\Helper\Event;
-use Emarsys\Emarsys\Model\Logs;
 
 /**
  * Class EmarsysSchemaCheck
@@ -66,9 +67,10 @@ class EmarsysSchemaCheck
                 $this->api->setWebsiteId($websiteId);
                 $response = $this->api->sendRequest('GET', 'event');
 
-                if ($response['body']['data']) {
-                    foreach ($response['body']['data'] as $eventInfo)
+                if (isset($response['body']['data'])) {
+                    foreach ($response['body']['data'] as $eventInfo) {
                         $emarsysApiIds[] = $eventInfo['id'];
+                    }
                 }
 
                 $emarsysLocalIds = $this->eventHelper->getLocalEmarsysEvents($websiteId);
@@ -81,8 +83,9 @@ class EmarsysSchemaCheck
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'EmarsysSchemaCheck',
                 $e->getMessage(),
-                $this->storeManager->getStore()->getId(),
+                0,
                 'EmarsysSchemaCheck::execute()'
             );
         }

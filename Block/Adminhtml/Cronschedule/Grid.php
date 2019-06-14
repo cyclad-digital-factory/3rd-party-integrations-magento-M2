@@ -11,7 +11,6 @@ use Magento\Cron\Model\Schedule;
 use Magento\Backend\Block\Template\Context;
 use Magento\Backend\Helper\Data;
 use Magento\Backend\Block\Widget\Grid\Extended;
-
 /**
  * Class Grid
  * @package Emarsys\Emarsys\Block\Adminhtml\Cronschedule
@@ -25,15 +24,15 @@ class Grid extends Extended
 
     /**
      * Grid constructor.
+     * @param ScheduleFactory $scheduleFactory
      * @param Context $context
      * @param Data $backendHelper
-     * @param ScheduleFactory $scheduleFactory
      * @param array $data
      */
     public function __construct(
+        ScheduleFactory $scheduleFactory,
         Context $context,
         Data $backendHelper,
-        ScheduleFactory $scheduleFactory,
         array $data = []
     ) {
         $this->scheduleFactory = $scheduleFactory;
@@ -46,11 +45,14 @@ class Grid extends Extended
     protected function _prepareCollection()
     {
         $cronJobs = $this->scheduleFactory->create()->getCollection();
-        $cronJobs->getSelect()->joinLeft(
-            ['ecd' => 'emarsys_cron_details'],
-            'ecd.schedule_id = main_table.schedule_id',
-            ['ecd.params']
-        )->order('main_table.schedule_id DESC');
+        $cronJobs->addFieldToFilter('job_code', ['like' => '%emarsys%']);
+        $cronJobs->getSelect()
+            ->joinLeft(
+                ['ecd' => $cronJobs->getTable('emarsys_cron_details')],
+                'ecd.schedule_id = main_table.schedule_id',
+                ['ecd.params']
+            );
+        $cronJobs->setOrder('schedule_id', 'DESC');
 
         $this->setCollection($cronJobs);
 
@@ -59,7 +61,7 @@ class Grid extends Extended
 
     /**
      * @return $this
-     * @SuppressWarnings(PHPMD.ExcessiveMethodLength)
+     * @throws \Exception
      */
     protected function _prepareColumns()
     {
@@ -89,8 +91,7 @@ class Grid extends Extended
                 'header' => __('Created At'),
                 'align' => 'left',
                 'index' => 'created_at',
-                'type' => 'datetime',
-                'width' => '50'
+                'width' => '50',
             ]
         );
 
@@ -100,8 +101,7 @@ class Grid extends Extended
                 'header' => __('Scheduled At'),
                 'align' => 'left',
                 'index' => 'scheduled_at',
-                'type' => 'datetime',
-                'width' => '50'
+                'width' => '50',
             ]
         );
 
@@ -111,8 +111,7 @@ class Grid extends Extended
                 'header' => __('Executed At'),
                 'align' => 'left',
                 'index' => 'executed_at',
-                'type' => 'datetime',
-                'width' => '50'
+                'width' => '50',
             ]
         );
 
@@ -122,8 +121,7 @@ class Grid extends Extended
                 'header' => __('Finished At'),
                 'align' => 'left',
                 'index' => 'finished_at',
-                'type' => 'datetime',
-                'width' => '50'
+                'width' => '50',
             ]
         );
 
@@ -165,6 +163,30 @@ class Grid extends Extended
                 'width' => '50',
                 'renderer' => 'Emarsys\Emarsys\Block\Adminhtml\Cronschedule\Renderer\Message',
                 'filter' => false
+            ]
+        );
+
+        $this->addColumn(
+            'action',
+            [
+                'header' => __('Action'),
+                'type' => 'action',
+                'getter' => 'getId',
+                'actions' => [
+                    [
+                        'caption' => __('Delete'),
+                        'url' => [
+                            'base' => 'emarsys_emarsys/cronschedule/delete',
+                            'params' => [
+                                'id' => $this->getId(),
+                            ],
+                        ],
+                        'field' => 'id',
+                        'confirm' => __('Are you sure?')
+                    ],
+                ],
+                'filter' => false,
+                'sortable' => false
             ]
         );
 

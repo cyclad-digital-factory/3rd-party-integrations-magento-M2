@@ -2,22 +2,26 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Controller\Adminhtml\Customerexport;
 
-use Magento\Backend\App\Action;
-use Magento\Framework\Stdlib\DateTime\DateTime;
-use Emarsys\Emarsys\Helper\Data as EmarsysHelperData;
-use Magento\Backend\App\Action\Context;
-use Magento\Store\Model\StoreManagerInterface;
-use Emarsys\Emarsys\Model\ResourceModel\Customer;
-use Magento\Framework\Stdlib\DateTime\Timezone;
-use Magento\Framework\Stdlib\DateTime\TimezoneInterface;
-use Magento\Framework\App\Request\Http;
-use Emarsys\Emarsys\Model\EmarsysCronDetails;
-use Emarsys\Emarsys\Helper\Cron as EmarsysCronHelper;
-use Emarsys\Emarsys\Model\Logs;
+use Emarsys\Emarsys\{
+    Helper\Data as EmarsysHelper,
+    Model\ResourceModel\Customer,
+    Model\EmarsysCronDetails,
+    Helper\Cron as EmarsysCronHelper,
+    Model\Logs
+};
+use Magento\{
+    Backend\App\Action,
+    Framework\Stdlib\DateTime\DateTime,
+    Backend\App\Action\Context,
+    Store\Model\StoreManagerInterface,
+    Framework\Stdlib\DateTime\Timezone,
+    Framework\Stdlib\DateTime\TimezoneInterface,
+    Framework\App\Request\Http
+};
 
 /**
  * Class CustomerExport
@@ -25,7 +29,7 @@ use Emarsys\Emarsys\Model\Logs;
  */
 class CustomerExport extends Action
 {
-    const MAX_CUSTOMER_RECORDS = 10000;
+    const MAX_CUSTOMER_RECORDS = 100000;
 
     /**
      * @var StoreManagerInterface
@@ -58,9 +62,9 @@ class CustomerExport extends Action
     protected $timezoneInterface;
 
     /**
-     * @var EmarsysHelperData
+     * @var EmarsysHelper
      */
-    protected $emarsysDataHelper;
+    protected $emarsysHelper;
 
     /**
      * @var
@@ -81,7 +85,7 @@ class CustomerExport extends Action
      * @param Timezone $timezone
      * @param TimezoneInterface $timezoneInterface
      * @param Http $request
-     * @param EmarsysHelperData $emarsysHelper
+     * @param EmarsysHelper $emarsysHelper
      * @param EmarsysCronDetails $emarsysCronDetails
      * @param EmarsysCronHelper $cronHelper
      * @param Logs $emarsysLogs
@@ -94,7 +98,7 @@ class CustomerExport extends Action
         Timezone $timezone,
         TimezoneInterface $timezoneInterface,
         Http $request,
-        EmarsysHelperData $emarsysHelper,
+        EmarsysHelper $emarsysHelper,
         EmarsysCronDetails $emarsysCronDetails,
         EmarsysCronHelper $cronHelper,
         Logs $emarsysLogs
@@ -105,7 +109,7 @@ class CustomerExport extends Action
         $this->request = $request;
         $this->timezone = $timezone;
         $this->timezoneInterface = $timezoneInterface;
-        $this->emarsysDataHelper = $emarsysHelper;
+        $this->emarsysHelper = $emarsysHelper;
         $this->emarsysCronDetails = $emarsysCronDetails;
         $this->cronHelper = $cronHelper;
         $this->emarsysLogs = $emarsysLogs;
@@ -113,7 +117,8 @@ class CustomerExport extends Action
     }
 
     /**
-     * @return \Magento\Framework\App\ResponseInterface
+     * @return \Magento\Framework\Controller\Result\Redirect
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function execute()
     {
@@ -127,32 +132,13 @@ class CustomerExport extends Action
             $returnUrl = $this->getUrl("emarsys_emarsys/customerexport/index", ["store" => $storeId]);
 
             //check emarsys enable for website
-            if ($this->emarsysDataHelper->getEmarsysConnectionSetting($websiteId)) {
-
-                //calculate time difference
+            if ($this->emarsysHelper->getEmarsysConnectionSetting($websiteId)) {
                 if (isset($data['fromDate']) && $data['fromDate'] != '') {
-                    $toTimezone = $this->timezone->getDefaultTimezone();
-                    $fromDate = $this->timezone->date($data['fromDate'])
-                        ->setTimezone(new \DateTimeZone($toTimezone))
-                        ->format('Y-m-d H:i:s');
-                    $magentoTime = $this->date->date('Y-m-d H:i:s');
+                    $data['fromDate'] = $this->date->date('Y-m-d', strtotime($data['fromDate'])) . ' 00:00:01';
+                }
 
-                    $currentTime = new \DateTime($magentoTime);
-                    $currentTime->format('Y-m-d H:i:s');
-
-                    $datetime2 = new \DateTime($fromDate);
-                    $interval = $currentTime->diff($datetime2);
-
-                    //timeframe more than 2 years not supported
-                    if ($interval->y > 2 || ($interval->y == 2 && $interval->m >= 1) || ($interval->y == 2 && $interval->d >= 1)) {
-                        $this->messageManager->addErrorMessage(__("The timeframe cannot be more than 2 years"));
-                        return $resultRedirect->setPath($returnUrl);
-                    }
-
-                    if (isset($data['toDate']) && $data['toDate'] != '') {
-                        $data['fromDate'] = $this->date->date('Y-m-d H:i:s', strtotime($data['fromDate']));
-                        $data['toDate'] = $this->date->date('Y-m-d H:i:s', strtotime($data['toDate']));
-                    }
+                if (isset($data['toDate']) && $data['toDate'] != '') {
+                    $data['toDate'] = $this->date->date('Y-m-d', strtotime($data['toDate'])) . ' 23:59:59';
                 }
 
                 //get customer collection
@@ -161,12 +147,12 @@ class CustomerExport extends Action
                     $cronJobScheduled = false;
                     $cronJobName = '';
 
-                    if (count($customerCollection) <= self::MAX_CUSTOMER_RECORDS) {
+                    if ($customerCollection->getSize() <= self::MAX_CUSTOMER_RECORDS) {
                         //export customers through API
                         $isCronjobScheduled = $this->cronHelper->checkCronjobScheduled(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_API, $storeId);
                         if (!$isCronjobScheduled) {
                             //no cron job scheduled yet, schedule a new cron job
-                            $cron = $this->cronHelper->scheduleCronjob(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_API, $storeId);
+                            $cron = $this->cronHelper->scheduleCronJob(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_API, $storeId);
                             $cronJobScheduled = true;
                             $cronJobName = EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_API;
                         }
@@ -174,7 +160,7 @@ class CustomerExport extends Action
                         //export customers through WebDav
                         $isCronjobScheduled = $this->cronHelper->checkCronjobScheduled(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_WEBDAV, $storeId);
                         if (!$isCronjobScheduled) {
-                            $cron = $this->cronHelper->scheduleCronjob(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_WEBDAV, $storeId);
+                            $cron = $this->cronHelper->scheduleCronJob(EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_WEBDAV, $storeId);
                             $cronJobScheduled = true;
                             $cronJobName = EmarsysCronHelper::CRON_JOB_CUSTOMER_BULK_EXPORT_WEBDAV;
                         }
@@ -208,8 +194,9 @@ class CustomerExport extends Action
         } catch (\Exception $e) {
             //add exception to logs
             $this->emarsysLogs->addErrorLog(
+                'CustomerExport',
                 $e->getMessage(),
-                $this->storeManager->getStore()->getId(),
+                0,
                 'CustomerExport::execute()'
             );
             //report error

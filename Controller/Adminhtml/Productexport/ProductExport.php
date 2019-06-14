@@ -10,7 +10,7 @@ use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
 use Magento\Store\Model\StoreManagerInterface;
 use Magento\Framework\App\Request\Http;
-use Emarsys\Emarsys\Helper\Data as EmarsysHelperData;
+use Emarsys\Emarsys\Helper\Data as EmarsysHelper;
 use Magento\Catalog\Model\ProductFactory;
 use Emarsys\Emarsys\Model\ResourceModel\Product as ProductResourceModel;
 use Emarsys\Emarsys\Helper\Cron as EmarsysCronHelper;
@@ -34,9 +34,9 @@ class ProductExport extends Action
     protected $storeManager;
 
     /**
-     * @var EmarsysHelperData
+     * @var EmarsysHelper
      */
-    protected $emarsysDataHelper;
+    protected $emarsysHelper;
 
     /**
      * @var ProductFactory
@@ -63,7 +63,7 @@ class ProductExport extends Action
      * @param Context $context
      * @param StoreManagerInterface $storeManager
      * @param Http $request
-     * @param EmarsysHelperData $emarsysHelper
+     * @param EmarsysHelper $emarsysHelper
      * @param ProductFactory $productCollectionFactory
      * @param ProductResourceModel $productResourceModel
      * @param EmarsysCronHelper $cronHelper
@@ -74,7 +74,7 @@ class ProductExport extends Action
         Context $context,
         StoreManagerInterface $storeManager,
         Http $request,
-        EmarsysHelperData $emarsysHelper,
+        EmarsysHelper $emarsysHelper,
         ProductFactory $productCollectionFactory,
         ProductResourceModel $productResourceModel,
         EmarsysCronHelper $cronHelper,
@@ -83,7 +83,7 @@ class ProductExport extends Action
     ) {
         $this->request = $request;
         $this->storeManager = $storeManager;
-        $this->emarsysDataHelper = $emarsysHelper;
+        $this->emarsysHelper = $emarsysHelper;
         $this->productCollectionFactory = $productCollectionFactory;
         $this->productResourceModel = $productResourceModel;
         $this->cronHelper = $cronHelper;
@@ -94,7 +94,9 @@ class ProductExport extends Action
 
     /**
      * product export action
-     * @return \Magento\Framework\App\ResponseInterface
+     *
+     * @return \Magento\Framework\Controller\Result\Redirect
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function execute()
     {
@@ -106,10 +108,10 @@ class ProductExport extends Action
             $websiteId = $store->getWebsiteId();
 
             //check emarsys enabled for the website
-            if ($this->emarsysDataHelper->getEmarsysConnectionSetting($websiteId)) {
+            if ($this->emarsysHelper->getEmarsysConnectionSetting($websiteId)) {
 
                 //check feed export enabled for the website
-                if ($this->emarsysDataHelper->isCatalogExportEnabled($websiteId)) {
+                if ($store->getConfig(EmarsysHelper::XPATH_PREDICT_ENABLE_NIGHTLY_PRODUCT_FEED)) {
                     $productCollection = $this->productCollectionFactory->create()->getCollection()
                         ->addStoreFilter($storeId)
                         ->addWebsiteFilter($websiteId)
@@ -124,7 +126,7 @@ class ProductExport extends Action
                             $isCronjobScheduled = $this->cronHelper->checkCronjobScheduled(EmarsysCronHelper::CRON_JOB_CATALOG_BULK_EXPORT, $storeId);
                             if (!$isCronjobScheduled) {
                                 //no cron job scheduled yet, schedule a new cron job
-                                $cron = $this->cronHelper->scheduleCronjob(EmarsysCronHelper::CRON_JOB_CATALOG_BULK_EXPORT, $storeId);
+                                $cron = $this->cronHelper->scheduleCronJob(EmarsysCronHelper::CRON_JOB_CATALOG_BULK_EXPORT, $storeId);
 
                                 //format and encode data in json to be saved in the table
                                 $params = $this->cronHelper->getFormattedParams($data);
@@ -161,6 +163,7 @@ class ProductExport extends Action
         } catch (\Exception $e) {
             //add exception to logs
             $this->emarsysLogs->addErrorLog(
+                'ProductExport',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'ProductExport::execute()'

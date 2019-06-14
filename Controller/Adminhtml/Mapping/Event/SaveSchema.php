@@ -2,20 +2,24 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 
 namespace Emarsys\Emarsys\Controller\Adminhtml\Mapping\Event;
 
-use Magento\Backend\App\Action;
-use Magento\Backend\App\Action\Context;
-use Magento\Framework\View\Result\PageFactory;
-use Emarsys\Emarsys\Helper\Event;
-use Emarsys\Emarsys\Helper\Data;
-use Emarsys\Emarsys\Model\ResourceModel\Event as EmarsysResourceModelEvent;
-use Emarsys\Emarsys\Helper\Logs;
-use Magento\Framework\Stdlib\DateTime\DateTime;
-use Magento\Store\Model\StoreManagerInterface;
+use Magento\{
+    Backend\App\Action,
+    Backend\App\Action\Context,
+    Framework\View\Result\PageFactory,
+    Framework\Stdlib\DateTime\DateTime,
+    Store\Model\StoreManagerInterface
+};
+use Emarsys\Emarsys\{
+    Helper\Event,
+    Helper\Data,
+    Model\ResourceModel\Event as EmarsysResourceModelEvent,
+    Helper\Logs
+};
 
 /**
  * Class SaveSchema
@@ -55,7 +59,7 @@ class SaveSchema extends Action
      * @param Data $emarsysHelper
      * @param EmarsysResourceModelEvent $eventResourceModel
      * @param PageFactory $resultPageFactory
-     * @param Logs $logHelper
+     * @param Logs $logsHelper
      * @param DateTime $date
      * @param StoreManagerInterface $storeManager
      */
@@ -65,7 +69,7 @@ class SaveSchema extends Action
         Data $emarsysHelper,
         EmarsysResourceModelEvent $eventResourceModel,
         PageFactory $resultPageFactory,
-        Logs $logHelper,
+        Logs $logsHelper,
         DateTime $date,
         StoreManagerInterface $storeManager
     ) {
@@ -74,7 +78,7 @@ class SaveSchema extends Action
         $this->resultPageFactory = $resultPageFactory;
         $this->eventResourceModel = $eventResourceModel;
         $this->eventHelper = $eventHelper;
-        $this->logHelper = $logHelper;
+        $this->logsHelper = $logsHelper;
         $this->date = $date;
         $this->_storeManager = $storeManager;
         $this->emarsysHelper = $emarsysHelper;
@@ -83,6 +87,7 @@ class SaveSchema extends Action
     /**
      * SaveSchema Action
      * @return $this
+     * @throws \Exception
      */
     public function execute()
     {
@@ -100,12 +105,12 @@ class SaveSchema extends Action
             $logsArray['auto_log'] = 'Complete';
             $logsArray['store_id'] = $storeId;
             $logsArray['website_id'] = $websiteId;
-            $logId = $this->logHelper->manualLogs($logsArray);
+            $logId = $this->logsHelper->manualLogs($logsArray);
             $logsArray['id'] = $logId;
 
-            if ($this->emarsysHelper->isEmarsysEnabled($websiteId) == 'true') {
+            if ($this->emarsysHelper->isEmarsysEnabled($websiteId)) {
                 $errorStatus = false;
-                $this->emarsysHelper->importEvents($logId);
+                $this->emarsysHelper->importEvents($storeId, $logId);
                 $this->messageManager->addSuccessMessage('Event schema added/updated successfully');
             } else {
                 $logsArray['messages'] = 'Emarsys is Disabled for this Store';
@@ -114,7 +119,7 @@ class SaveSchema extends Action
                 $logsArray['action'] = 'Schame Updated';
                 $logsArray['message_type'] = 'Error';
                 $logsArray['log_action'] = 'True';
-                $this->logHelper->logs($logsArray);
+                $this->logsHelper->manualLogs($logsArray);
                 $this->messageManager->addErrorMessage('Emarsys is not Enabled for this store');
             }
         } catch (\Exception $e) {
@@ -123,7 +128,7 @@ class SaveSchema extends Action
             $logsArray['action'] = 'Update Schema not successful';
             $logsArray['message_type'] = 'Error';
             $logsArray['log_action'] = 'True';
-            $this->logHelper->logs($logsArray);
+            $this->logsHelper->manualLogs($logsArray);
             $this->messageManager->addErrorMessage('Error occurred while Updating Schema' . $e->getMessage());
         }
 
@@ -135,7 +140,7 @@ class SaveSchema extends Action
             $logsArray['status'] = 'success';
         }
         $logsArray['finished_at'] = $this->date->date('Y-m-d H:i:s', time());
-        $this->logHelper->manualLogsUpdate($logsArray);
+        $this->logsHelper->manualLogs($logsArray);
 
         return $resultRedirect->setRefererOrBaseUrl();
     }

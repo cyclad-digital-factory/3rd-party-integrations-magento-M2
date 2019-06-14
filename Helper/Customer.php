@@ -8,7 +8,9 @@ namespace Emarsys\Emarsys\Helper;
 
 use Magento\Framework\App\Helper\AbstractHelper;
 use Magento\Framework\App\Helper\Context;
-use Emarsys\Emarsys\Model\Logs as EmarsysModelLogs;
+use Emarsys\Emarsys\Helper\Data as EmarsysHelper;
+use Emarsys\Emarsys\Model\Api\Api as EmarsysModelApiApi;
+use Magento\Store\Model\StoreManagerInterface as StoreManager;
 
 /**
  * Class Customer
@@ -22,31 +24,39 @@ class Customer extends AbstractHelper
     protected $context;
 
     /**
-     * @var Logger
-     */
-    protected $logger;
-
-    /**
      * @var Data
      */
-    protected $dataHelper;
+    protected $emarsysHelper;
+
+    /**
+     * @var EmarsysModelApiApi
+     */
+    protected $api;
+
+    /**
+     * @var StoreManager
+     */
+    protected $storeManager;
 
     /**
      * Customer constructor.
+     *
      * @param Context $context
-     * @param EmarsysModelLogs $emarsysLogs
-     * @param Data $dataHelper
+     * @param EmarsysHelper $emarsysHelper
+     * @param EmarsysModelApiApi $api
+     * @param StoreManager $storeManager
      */
     public function __construct(
         Context $context,
-        EmarsysModelLogs $emarsysLogs,
-        Data $dataHelper
+        EmarsysHelper $emarsysHelper,
+        EmarsysModelApiApi $api,
+        StoreManager $storeManager
     ) {
         ini_set('default_socket_timeout', 1000);
         $this->context = $context;
-        $this->dataHelper = $dataHelper;
-        $this->emarsysLogs = $emarsysLogs;
-        $this->logger = $context->getLogger();
+        $this->emarsysHelper = $emarsysHelper;
+        $this->api = $api;
+        $this->storeManager = $storeManager;
     }
 
     /**
@@ -56,13 +66,18 @@ class Customer extends AbstractHelper
     public function getEmarsysCustomerSchema($storeId)
     {
         try {
-            $this->dataHelper->getEmarsysAPIDetails($storeId);
-            $response = $this->dataHelper->send('GET', 'field/translate/en');
-            $jsonDecode = \Zend_Json::decode($response);
-            return $jsonDecode;
+            $store = $this->storeManager->getStore($storeId);
+            $this->api->setWebsiteId($store->getWebsiteId());
+            $response = $this->api->sendRequest('GET', 'field/translate/en');
+            return $response['body'];
         } catch (\Exception $e) {
-            $this->emarsysLogs->addErrorLog(htmlentities($e->getMessage()), $storeId, 'getEmarsysCustomerSchema');
-            return false;
+            $this->emarsysHelper->addErrorLog(
+                'getEmarsysCustomerSchema',
+                htmlentities($e->getMessage()),
+                $storeId,
+                'getEmarsysCustomerSchema'
+            );
         }
+        return false;
     }
 }

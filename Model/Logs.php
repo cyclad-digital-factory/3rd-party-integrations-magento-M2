@@ -2,7 +2,7 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 
 namespace Emarsys\Emarsys\Model;
@@ -14,6 +14,7 @@ use Magento\Framework\Message\ManagerInterface;
 use Magento\Framework\Model\ResourceModel\AbstractResource;
 use Magento\Framework\Data\Collection\AbstractDb;
 use Magento\Framework\Stdlib\DateTime\DateTime;
+use Emarsys\Emarsys\Helper\Logs\Proxy as EmarsysLogs;
 
 /**
  * Class Logs
@@ -22,14 +23,17 @@ use Magento\Framework\Stdlib\DateTime\DateTime;
 class Logs extends \Magento\Framework\Model\AbstractModel
 {
     /**
+     * @var EmarsysLogs
+     */
+    protected $emarsysLog;
+    /**
      * @var StoreManagerInterface
      */
-    protected $storeManager ;
-
+    protected $storeManager;
     /**
      * @var ManagerInterface
      */
-    protected $messageManagerInterface ;
+    protected $messageManagerInterface;
 
     /**
      * Logs constructor.
@@ -47,10 +51,13 @@ class Logs extends \Magento\Framework\Model\AbstractModel
         StoreManagerInterface $storeManager,
         ManagerInterface $managerInterface,
         DateTime $dateTime,
+        EmarsysLogs $emarsysLog,
         AbstractResource $resource = null,
         AbstractDb $resourceCollection = null,
         array $data = []
-    ) {
+    )
+    {
+        $this->emarsysLog = $emarsysLog;
         $this->storeManager = $storeManager;
         $this->messageManagerInterface = $managerInterface;
         $this->dateTime = $dateTime;
@@ -68,9 +75,14 @@ class Logs extends \Magento\Framework\Model\AbstractModel
         $this->_init('Emarsys\Emarsys\Model\ResourceModel\Logs');
     }
 
-    public function addErrorLog($messages, $storeId, $info)
+    /**
+     * @param $messages
+     * @param $description
+     * @param $storeId
+     * @param $info
+     */
+    public function addErrorLog($messages = '', $description = '', $storeId = 0, $info = '')
     {
-        $objectManager = \Magento\Framework\App\ObjectManager::getInstance();
         try {
             $logsArray['job_code'] = 'Exception';
             $logsArray['status'] = 'error';
@@ -80,19 +92,44 @@ class Logs extends \Magento\Framework\Model\AbstractModel
             $logsArray['run_mode'] = '';
             $logsArray['auto_log'] = '';
             $logsArray['store_id'] = $storeId;
-            $logsHelper = $objectManager->create('Emarsys\Emarsys\Helper\Logs');
-            $logId = $logsHelper->manualLogs($logsArray);
+            $logsArray['emarsys_info'] = $info;
+            $logsArray['description'] = $description;
+            $logsArray['action'] = '';
+            $logsArray['message_type'] = 'error';
+            $logsArray['log_action'] = 'fail';
+            $logsArray['website_id'] = $this->storeManager->getStore($storeId)->getWebsiteId();
+            $this->emarsysLog->manualLogs($logsArray);
+        } catch (\Exception $e) {
+            $this->messageManagerInterface->addErrorMessage(
+                'Unable to Log: ' . $e->getMessage()
+            );
+        }
+    }
 
-            if ($logId) {
-                $logsArray['id'] = $logId;
-                $logsArray['emarsys_info'] = $info;
-                $logsArray['description'] = $messages;
-                $logsArray['action'] = '';
-                $logsArray['message_type'] = 'error';
-                $logsArray['log_action'] = 'fail';
-                $logsArray['website_id'] = $this->storeManager->getStore($storeId)->getWebsiteId();
-                $logsHelper->logs($logsArray);
-            }
+    /**
+     * @param $messages
+     * @param $description
+     * @param $storeId
+     * @param $info
+     */
+    public function addNoticeLog($messages = '', $description = '', $storeId = 0, $info = '')
+    {
+        try {
+            $logsArray['job_code'] = 'Notice';
+            $logsArray['status'] = 'notice';
+            $logsArray['messages'] = $messages;
+            $logsArray['created_at'] = $this->dateTime->date('Y-m-d H:i:s', time());
+            $logsArray['executed_at'] = $this->dateTime->date('Y-m-d H:i:s', time());
+            $logsArray['run_mode'] = '';
+            $logsArray['auto_log'] = '';
+            $logsArray['store_id'] = $storeId;
+            $logsArray['emarsys_info'] = $info;
+            $logsArray['description'] = $description;
+            $logsArray['action'] = '';
+            $logsArray['message_type'] = 'notice';
+            $logsArray['log_action'] = 'fail';
+            $logsArray['website_id'] = $this->storeManager->getStore($storeId)->getWebsiteId();
+            $this->emarsysLog->manualLogs($logsArray);
         } catch (\Exception $e) {
             $this->messageManagerInterface->addErrorMessage(
                 'Unable to Log: ' . $e->getMessage()

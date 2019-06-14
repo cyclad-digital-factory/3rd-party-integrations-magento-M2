@@ -2,26 +2,31 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Model\WebDav;
 
-use Emarsys\Emarsys\Helper\Data;
-use Magento\Framework\Stdlib\DateTime\DateTime;
-use Magento\Backend\App\Action\Context;
-use Magento\Store\Model\StoreManagerInterface;
-use Emarsys\Emarsys\Model\ResourceModel\Customer;
-use Emarsys\Emarsys\Helper\Logs;
-use Magento\Store\Model\ScopeInterface;
+use Magento\{
+    Framework\DataObject,
+    Framework\Stdlib\DateTime\DateTime,
+    Backend\App\Action\Context,
+    Store\Model\StoreManagerInterface,
+    Store\Model\ScopeInterface
+};
+use Emarsys\Emarsys\{
+    Model\ResourceModel\Customer,
+    Helper\Data as EmarsysHelper,
+    Helper\Logs
+};
 
 /**
  * Class Subscriber
  * @package Emarsys\Emarsys\Model\WebDav
  */
-class Subscriber extends \Magento\Framework\DataObject
+class Subscriber extends DataObject
 {
     /**
-     * @var Data
+     * @var EmarsysHelper
      */
     protected $emarsysHelper;
 
@@ -52,15 +57,17 @@ class Subscriber extends \Magento\Framework\DataObject
 
     /**
      * Subscriber constructor.
-     * @param Data $emarsysHelper
+     *
+     * @param EmarsysHelper $emarsysHelper
      * @param Context $context
      * @param DateTime $date
      * @param StoreManagerInterface $storeManager
      * @param Customer $customerResourceModel
      * @param Logs $logsHelper
+     * @param WebDavExport $webDavExport
      */
     public function __construct(
-        Data $emarsysHelper,
+        EmarsysHelper $emarsysHelper,
         Context $context,
         DateTime $date,
         StoreManagerInterface $storeManager,
@@ -116,18 +123,18 @@ class Subscriber extends \Magento\Framework\DataObject
         if ($optInStatus == 'attribute') {
             $data['subscribeStatus'] = $data['attributevalue'];
         }
-        $emarsysFieldNames = ['Email', 'Magento Subscriber ID', 'Magento Customer Unique ID'];
+        $emarsysFieldNames = [EmarsysHelper::CUSTOMER_EMAIL, EmarsysHelper::SUBSCRIBER_ID];
         if ($optInStatus != '') {
-            $emarsysFieldNames[] = 'Opt-In';
+            $emarsysFieldNames[] = EmarsysHelper::OPT_IN;
         }
 
-        $customervalues = $this->customerResourceModel->getSubscribedCustomerCollection(
+        $customerValues = $this->customerResourceModel->getSubscribedCustomerCollection(
             $data,
             implode(',', $websiteStoreIds),
             1
         );
 
-        if ($customervalues) {
+        if ($customerValues) {
             //webDav credentials from admin configurations
             $webDavCredentials = $this->emarsysHelper->collectWebDavCredentials($scope, $websiteId);
             if ($webDavCredentials && !empty($webDavCredentials)) {
@@ -149,11 +156,11 @@ class Subscriber extends \Magento\Framework\DataObject
                     //write header to subscribers csv
                     fputcsv($handle, $emarsysFieldNames);
 
-                    foreach ($customervalues as $value) {
+                    foreach ($customerValues as $value) {
                         $values = [];
                         $values[] = $value['subscriber_email'];
                         $values[] = $value['subscriber_id'];
-                        $values[] = $value['subscriber_email'] . "#" . $websiteId . "#" . $value['store_id'];
+
                         if ($optInStatus == 'true') {
                             $values[] = '1';
                         } elseif ($optInStatus == 'empty') {
@@ -175,7 +182,9 @@ class Subscriber extends \Magento\Framework\DataObject
                     );
 
                     //remove csv file after export
-                    unlink($filePath);
+                    if (file_exists($filePath)) {
+                        unlink($filePath);
+                    }
 
                     if ($exportStatus['status']) {
                         //Subscriber file uploaded to server successfully
@@ -189,26 +198,26 @@ class Subscriber extends \Magento\Framework\DataObject
                         $logsArray['description'] = $exportStatus['response_body'];
                         $logsArray['message_type'] = 'Error';
                     }
-                    $this->logsHelper->logs($logsArray);
+                    $this->logsHelper->manualLogs($logsArray);
                 } else {
                     //Failed to Login with WebDav Server
                     $logsArray['emarsys_info'] = 'Failed to Login with WebDav Server.';
                     $logsArray['description'] = 'Failed to Login with WebDav Server. Please check your settings and try again. ' . $checkWebDavConnection['response_body'];
                     $logsArray['message_type'] = 'Error';
-                    $this->logsHelper->logs($logsArray);
+                    $this->logsHelper->manualLogs($logsArray);
                 }
             } else {
                 //Invalid WebDAV credentials
                 $logsArray['status'] = 'error';
                 $logsArray['messages'] = 'Invalid WebDAV credentials.';
-                $this->logsHelper->manualLogsUpdate($logsArray);
+                $this->logsHelper->manualLogs($logsArray);
             }
         } else {
             //No Subscribers found
             $logsArray['emarsys_info'] = __('No Subscribers found');
             $logsArray['description'] = __('No Subscribers found for store %1', $store->getName());
             $logsArray['message_type'] = 'Error';
-            $this->logsHelper->logs($logsArray);
+            $this->logsHelper->manualLogs($logsArray);
         }
 
         //set error/success state
@@ -220,7 +229,7 @@ class Subscriber extends \Magento\Framework\DataObject
             $logsArray['messages'] = 'Initial DB data completed';
         }
         $logsArray['finished_at'] = $this->date->date('Y-m-d H:i:s', time());
-        $this->logsHelper->manualLogsUpdate($logsArray);
+        $this->logsHelper->manualLogs($logsArray);
 
         return $errorCount ? false : true;
     }
