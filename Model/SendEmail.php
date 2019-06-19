@@ -184,21 +184,12 @@ class SendEmail extends AbstractModel
                             $websiteId
                         );
 
-                        if (!empty($customerId)) {
-                            $customerIdKey = $this->customerResourceModel->getKeyId(EmarsysHelper::CUSTOMER_ID, $storeId);
-                            $buildRequest[$customerIdKey] = $customerId;
-                        }
-
                         $data = [
                             'email' => $externalId,
                             'store_id' => $storeId
                         ];
                         $subscribeId = $this->customerResourceModel->getSubscribeIdFromEmail($data);
 
-                        if (!empty($subscribeId)) {
-                            $subscriberIdKey = $this->customerResourceModel->getKeyId(EmarsysHelper::SUBSCRIBER_ID, $storeId);
-                            $buildRequest[$subscriberIdKey] = $subscribeId;
-                        }
 
                         $emailKey = $this->customerResourceModel->getKeyId(EmarsysHelper::CUSTOMER_EMAIL, $storeId);
                         $buildRequest['key_id'] = $emailKey;
