@@ -23,7 +23,7 @@ use Emarsys\Emarsys\Model\Logs as EmarsysLogsModel;
  */
 class SubscriberExport extends Action
 {
-    const MAX_SUBSCRIBERS_RECORDS = 10000;
+    const MAX_SUBSCRIBERS_RECORDS = 100000;
 
     /**
      * @var StoreManagerInterface
@@ -43,7 +43,7 @@ class SubscriberExport extends Action
     /**
      * @var DataHelper
      */
-    protected $dataHelper;
+    protected $emarsysHelper;
 
     /**
      * @var EmarsysCronHelper
@@ -66,7 +66,7 @@ class SubscriberExport extends Action
      * @param StoreManagerInterface $storeManager
      * @param Customer $customerResourceModel
      * @param Http $request
-     * @param DataHelper $dataHelper
+     * @param DataHelper $emarsysHelper
      * @param EmarsysCronHelper $cronHelper
      * @param EmarsysCronDetails $cronDetails
      * @param EmarsysLogsModel $emarsysLogs
@@ -76,7 +76,7 @@ class SubscriberExport extends Action
         StoreManagerInterface $storeManager,
         Customer $customerResourceModel,
         Http $request,
-        DataHelper $dataHelper,
+        DataHelper $emarsysHelper,
         EmarsysCronHelper $cronHelper,
         EmarsysCronDetails $cronDetails,
         EmarsysLogsModel $emarsysLogs
@@ -84,7 +84,7 @@ class SubscriberExport extends Action
         $this->storeManager = $storeManager;
         $this->customerResourceModel = $customerResourceModel;
         $this->request = $request;
-        $this->dataHelper = $dataHelper;
+        $this->emarsysHelper = $emarsysHelper;
         $this->cronHelper = $cronHelper;
         $this->emarsysCronDetails = $cronDetails;
         $this->emarsysLogs = $emarsysLogs;
@@ -99,18 +99,20 @@ class SubscriberExport extends Action
             $scope = ScopeInterface::SCOPE_WEBSITES;
             $store = $this->storeManager->getStore($storeId);
             $websiteId = $store->getWebsiteId();
+            $data['website'] = $websiteId;
             $websiteStoreIds = [];
             $websiteStoreIds[] = $storeId;
             $resultRedirect = $this->resultRedirectFactory->create();
             $returnUrl = $this->getUrl("emarsys_emarsys/subscriberexport/index", ["store" => $storeId]);
 
             //check emarsys enable for website
-            if ($this->dataHelper->getEmarsysConnectionSetting($websiteId)) {
+            if ($this->emarsysHelper->getEmarsysConnectionSetting($websiteId)) {
                 $optInStatus = $this->customerResourceModel->getDataFromCoreConfig(
                     'contacts_synchronization/initial_db_load/initial_db_load',
                     $scope,
                     $websiteId
                 );
+                $data['initial_load'] = $optInStatus;
 
                 if ($optInStatus == 'attribute') {
                     $subscribedStatus = $this->customerResourceModel->getDataFromCoreConfig(
@@ -119,6 +121,7 @@ class SubscriberExport extends Action
                         $websiteId
                     );
                     $data['subscribeStatus'] = $subscribedStatus;
+                    $data['attributevalue'] = $subscribedStatus;
                 }
 
                 //get subscribers collection
@@ -136,7 +139,7 @@ class SubscriberExport extends Action
                         $isCronjobScheduled = $this->cronHelper->checkCronjobScheduled(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_API, $storeId);
                         if (!$isCronjobScheduled) {
                             //no cron job scheduled yet, schedule a new cron job
-                            $cron = $this->cronHelper->scheduleCronjob(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_API, $storeId);
+                            $cron = $this->cronHelper->scheduleCronJob(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_API, $storeId);
                             $cronJobScheduled = true;
                             $cronJobName = EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_API;
                         }
@@ -145,7 +148,7 @@ class SubscriberExport extends Action
                         $isCronjobScheduled = $this->cronHelper->checkCronjobScheduled(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_WEBDAV, $storeId);
                         if (!$isCronjobScheduled) {
                             //no cron job scheduled yet, schedule a new cron job
-                            $cron = $this->cronHelper->scheduleCronjob(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_WEBDAV, $storeId);
+                            $cron = $this->cronHelper->scheduleCronJob(EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_WEBDAV, $storeId);
                             $cronJobScheduled = true;
                             $cronJobName = EmarsysCronHelper::CRON_JOB_SUBSCRIBERS_BULK_EXPORT_WEBDAV;
                         }
@@ -179,6 +182,7 @@ class SubscriberExport extends Action
         } catch (\Exception $e) {
             //add exception to logs
             $this->emarsysLogs->addErrorLog(
+                'SubscriberExport',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'SubscriberExport::execute()'

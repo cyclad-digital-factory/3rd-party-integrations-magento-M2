@@ -3,18 +3,23 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Model\ResourceModel;
 
-use Magento\Framework\Stdlib\DateTime\DateTime;
-use Symfony\Component\Config\Definition\Exception\Exception;
+use Emarsys\Emarsys\Model\Logs;
+use Magento\Framework\{
+    App\Config\ScopeConfigInterface,
+    Model\ResourceModel\Db\AbstractDb,
+    Model\ResourceModel\Db\Context,
+    Stdlib\DateTime\DateTime
+};
 
 /**
  * Class Sync
  * @package Emarsys\Emarsys\Model\ResourceModel
  */
-class Sync extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
+class Sync extends AbstractDb
 {
     /**
      * @var int
@@ -60,20 +65,18 @@ class Sync extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
 
     protected $scopeConfigInterface;
 
-
     /**
-     * 
-     * @param \Magento\Framework\Model\ResourceModel\Db\Context $context
+     * @param Context $context
      * @param DateTime $date
-     * @param \Emarsys\Emarsys\Model\Logs $emarsysLogs
-     * @param \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfigInterface
+     * @param Logs $emarsysLogs
+     * @param ScopeConfigInterface $scopeConfigInterface
      * @param null $connectionName
      */
     public function __construct(
-        \Magento\Framework\Model\ResourceModel\Db\Context $context,
+        Context $context,
         DateTime $date,
-        \Emarsys\Emarsys\Model\Logs $emarsysLogs,
-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfigInterface,
+        Logs $emarsysLogs,
+        ScopeConfigInterface $scopeConfigInterface,
         $connectionName = null
     ) {
     
@@ -91,8 +94,6 @@ class Sync extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
         $this->_init('emarsys_attribute_sync', 'id');
     }
 
-
-
     /**
      * 
      * @param type $entity
@@ -103,45 +104,30 @@ class Sync extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
     {
         $connection = $this->getConnection();
 
+        $table = false;
         if ($entity == 'product') {
-            $results = $connection->fetchAll("SELECT * FROM " . $this->getTable('emarsys_emarsys_product_attributes')  . " where store_id =" . $storeId);
+            $table = $this->getTable('emarsys_emarsys_product_attributes');
         }
         if ($entity == 'customer') {
-            $results = $connection->fetchAll("SELECT * FROM " . $this->getTable('emarsys_emarsys_customer_attributes') . " where store_id =" . $storeId);
+            $table = $this->getTable('emarsys_emarsys_customer_attributes');
         }
         if ($entity == 'order') {
-            $results = $connection->fetchAll("SELECT * FROM " . $this->getTable('emarsys_emarsys_order_attributes') . " where store_id =" . $storeId);
+            $table = $this->getTable('emarsys_emarsys_order_attributes');
         }
 
         if ($entity == 'customproductattributes') {
-            $results = $connection->fetchAll("SELECT * FROM " . $this->getTable('emarsys_custom_product_attributes') . " where store_id =" . $storeId);
+            $table = $this->getTable('emarsys_custom_product_attributes');
         }
 
-        return $results;
-    }
+        if ($table) {
+            $select = $connection->select()
+                ->from($table)
+                ->where('store_id = ?', $storeId);
 
-    /**
-     * 
-     * @param type $syncId
-     * @param int $storeId
-     * @return array
-     */
-    public function getLastSyncDate($syncId = null, $storeId = null)
-    {
-        if ($storeId == null) {
-            $storeId = 1;
+            return $connection->fetchAll($select);
         }
-        $sql = "SELECT  DATE_FORMAT(max(`finished_at`),'%Y-%m-%d %H:%i:%s') as syncdate FROM " . $this->getTable('emarsys_syncstatus') . " WHERE `id` = ( SELECT MAX(`id`) FROM " . $this->getTable('emarsys_syncstatus') . "  WHERE `status`='SUCCESS' and  `sync_id` = " . $syncId . " and `store_id` = " . $storeId . ")";
-        try {
-            $lastsyncDate = $this->getConnection()->fetchOne($sql);
-            if ($lastsyncDate == null || $lastsyncDate == '') {
-                $lastsyncDate = $this->date->date('Y-m-d H:i:s', strtotime('-5 days'));
-            }
 
-            return $lastsyncDate;
-        } catch (Exception $e) {
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'getLastSyncDate');
-        }
+        return [];
     }
 
     /**
@@ -153,14 +139,10 @@ class Sync extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
      */
     public function getDataFromCoreConfig($path, $scope = null, $scopeId = null)
     {
-        try {
-            if ($scope && $scopeId) {
-                return $this->scopeConfigInterface->getValue($path, $scope, $scopeId);
-            } else {
-                return  $this->scopeConfigInterface->getValue($path);
-            }
-        } catch (\Exception $e) {
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $scopeId, 'getDataFromCoreConfig in Sync.php');
+        if ($scope && $scopeId) {
+            return $this->scopeConfigInterface->getValue($path, $scope, $scopeId);
+        } else {
+            return $this->scopeConfigInterface->getValue($path);
         }
     }
 }

@@ -71,7 +71,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
     /**
      * @var \Emarsys\Emarsys\Helper\Data
      */
-    protected $emarsysDataHelper;
+    protected $emarsysHelper;
 
     /**
      * Grid constructor.
@@ -84,7 +84,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
      * @param \Emarsys\Emarsys\Model\ResourceModel\Order $resourceModelOrder
      * @param \Emarsys\Emarsys\Model\OrderFactory $orderFactory
      * @param \Magento\Framework\Module\Manager $moduleManager
-     * @param \Emarsys\Emarsys\Helper\Data $emarsysDataHelper
+     * @param \Emarsys\Emarsys\Helper\Data $emarsysHelper
      * @param array $data
      */
     public function __construct(
@@ -97,7 +97,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
         \Emarsys\Emarsys\Model\ResourceModel\Order $resourceModelOrder,
         \Emarsys\Emarsys\Model\OrderFactory $orderFactory,
         \Magento\Framework\Module\Manager $moduleManager,
-        \Emarsys\Emarsys\Helper\Data $emarsysDataHelper,
+        \Emarsys\Emarsys\Helper\Data $emarsysHelper,
         $data = []
     ) {
         $this->session = $context->getBackendSession();
@@ -110,7 +110,7 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
         $this->resourceModelOrder = $resourceModelOrder;
         $this->_storeManager = $context->getStoreManager();
         $this->orderFactory = $orderFactory;
-        $this->emarsysDataHelper = $emarsysDataHelper;
+        $this->emarsysHelper = $emarsysHelper;
         parent::__construct($context, $backendHelper, $data);
     }
 
@@ -119,7 +119,10 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
      */
     protected function _prepareCollection()
     {
-        $customCollection = $this->orderFactory->create()->getCollection()->setOrder('magento_column_name', 'ASC');
+        $storeId = $this->getRequest()->getParam('store', 1);
+        $customCollection = $this->orderFactory->create()->getCollection()
+            ->addFilter('store_id', $storeId)
+            ->setOrder('magento_column_name', 'ASC');
         $this->setCollection($customCollection);
 
         return parent::_prepareCollection();
@@ -160,14 +163,11 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
     {
         parent::_construct();
         $this->session->setData('gridData', '');
-        $storeId = $this->getRequest()->getParam('store');
-        if (!isset($storeId)) {
-            $storeId = 1;
-        }
+        $storeId = $this->getRequest()->getParam('store', 1);
         $this->session->setData('store', $storeId);
-        $mappingExists = $this->resourceModelOrder->orderMappingExists();
-        if ($mappingExists == false) {
-            $header = $this->emarsysDataHelper->getSalesOrderCsvDefaultHeader();
+        $mappingExists = $this->resourceModelOrder->orderMappingExists($storeId);
+        if (empty($mappingExists)) {
+            $header = $this->emarsysHelper->getSalesOrderCsvDefaultHeader();
             foreach ($header as $column) {
                 $manData[$column] = $column;
             }

@@ -2,14 +2,15 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Cron;
 
-use Emarsys\Emarsys\Helper\Data as EmarsysDataHelper;
-use Emarsys\Emarsys\Model\Order as EmarsysModelOrder;
+use Emarsys\{
+    Emarsys\Model\Order as EmarsysModelOrder,
+    Emarsys\Model\Logs
+};
 use Magento\Store\Model\StoreManagerInterface;
-use Emarsys\Emarsys\Model\Logs;
 
 /**
  * Class OrderSyncQueue
@@ -55,19 +56,20 @@ class OrderSyncQueue
             $stores = $this->storeManager->getStores();
             foreach ($stores as $store) {
                 $storeId = $store->getId();
-                if ($store->getId() == 0) {
+                if ($storeId == 0) {
                     continue;
                 }
 
                 $this->emarsysOrderModel->syncOrders(
                     $storeId,
-                    EmarsysDataHelper::ENTITY_EXPORT_MODE_AUTOMATIC
+                    \Emarsys\Emarsys\Helper\Data::ENTITY_EXPORT_MODE_AUTOMATIC
                 );
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'OrderSyncQueue',
                 $e->getMessage(),
-                $this->storeManager->getStore()->getId(),
+                0,
                 'OrderSyncQueue::execute()'
             );
         }

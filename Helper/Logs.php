@@ -103,107 +103,78 @@ class Logs extends AbstractHelper
 
     /**
      * @param array $logsArray
+     * @param int $exportCron
      * @return string
+     * @throws \Exception
      */
     public function manualLogs($logsArray = [], $exportCron = 0)
     {
         if (!$this->cronSchedule || $exportCron) {
             $this->cronSchedule = $this->logScheduleFactory->create();
         }
-        try {
-            if (isset($logsArray['job_code'])) {
-                $this->cronSchedule->setJobCode($logsArray['job_code']);
-            }
 
-            if (isset($logsArray['schedule_id'])) {
-                $this->cronSchedule->setScheduleId($logsArray['schedule_id']);
-            }
-
-            if (isset($logsArray['status'])) {
-                $this->cronSchedule->setStatus($logsArray['status']);
-            }
-
-            if (isset($logsArray['messages'])) {
-                $this->cronSchedule->setMessages($logsArray['messages']);
-            }
-
-            if (isset($logsArray['created_at'])) {
-                $this->cronSchedule->setCreatedAt($logsArray['created_at']);
-            }
-
-            if (isset($logsArray['executed_at'])) {
-                $this->cronSchedule->setExecutedAt($logsArray['executed_at']);
-            }
-
-            if (isset($logsArray['finished_at'])) {
-                $this->cronSchedule->setFinishedAt($logsArray['finished_at']);
-            }
-
-            if (isset($logsArray['run_mode'])) {
-                $this->cronSchedule->setRunMode($logsArray['run_mode']);
-            }
-
-            if (isset($logsArray['auto_log'])) {
-                $this->cronSchedule->setAutoLog($logsArray['auto_log']);
-            }
-
-            if (isset($logsArray['store_id'])) {
-                $this->cronSchedule->setStoreId($logsArray['store_id']);
-            }
-
-            $this->cronSchedule->save();
-            return $this->cronSchedule->getId();
-        } catch (\Exception $e) {
-            return $e->getMessage();
+        if (isset($logsArray['job_code']) && empty($this->cronSchedule->getJobCode())
+            || $this->cronSchedule->getJobCode() == 'Exception'
+            || $this->cronSchedule->getJobCode() == 'Notice'
+        ) {
+            $this->cronSchedule->setJobCode($logsArray['job_code']);
         }
-    }
 
-    /**
-     * Update latest saving manual log record in cron scheduler
-     * @param array $logsArray
-     * @return string
-     */
-    public function manualLogsUpdate($logsArray = [])
-    {
-        $collection = $this->logScheduleFactory->create()->getCollection();
-        $collection->addFieldToFilter('id', $logsArray['id']);
-        $result = $collection->getFirstItem();
-
-        if (null !== $result->getId()) {
-            $collection = $this->logScheduleFactory->create()->load($logsArray['id']);
-            try {
-                if (isset($logsArray['status'])) {
-                    $collection->setStatus($logsArray['status']);
-                }
-
-                if (isset($logsArray['messages'])) {
-                    $collection->setMessages($logsArray['messages']);
-                }
-
-                if (isset($logsArray['scheduled_at'])) {
-                    $collection->setScheduledAt($logsArray['scheduled_at']);
-                }
-
-                if (isset($logsArray['executed_at'])) {
-                    $collection->setExecutedAt($logsArray['executed_at']);
-                }
-
-                if (isset($logsArray['finished_at'])) {
-                    $collection->setFinishedAt($logsArray['finished_at']);
-                }
-
-                $collection->save();
-            } catch (\Exception $e) {
-                return $e->getMessage();
-            }
-        } else {
-            return "Log Record not found";
+        if (isset($logsArray['schedule_id'])) {
+            $this->cronSchedule->setScheduleId($logsArray['schedule_id']);
         }
+
+        if (isset($logsArray['status'])) {
+            $this->cronSchedule->setStatus($logsArray['status']);
+        }
+
+        if (isset($logsArray['messages']) && empty($this->cronSchedule->getMessages())) {
+            $this->cronSchedule->setMessages(str_replace(',"', ' ,"', $logsArray['messages']));
+        }
+
+        if (isset($logsArray['created_at'])) {
+            $this->cronSchedule->setCreatedAt($logsArray['created_at']);
+        }
+
+        if (isset($logsArray['executed_at'])) {
+            $this->cronSchedule->setExecutedAt($logsArray['executed_at']);
+        }
+
+        if (isset($logsArray['finished_at'])) {
+            $this->cronSchedule->setFinishedAt($logsArray['finished_at']);
+        }
+
+        if (isset($logsArray['run_mode'])) {
+            $this->cronSchedule->setRunMode($logsArray['run_mode']);
+        }
+
+        if (isset($logsArray['auto_log'])) {
+            $this->cronSchedule->setAutoLog($logsArray['auto_log']);
+        }
+
+        if (isset($logsArray['store_id'])) {
+            $this->cronSchedule->setStoreId($logsArray['store_id']);
+        }
+
+        $this->cronSchedule->save();
+
+        $id = $this->cronSchedule->getId();
+
+        $logsArray['id'] = $id;
+
+        if ((isset($logsArray['emarsys_info']) && !empty($logsArray['emarsys_info']))
+            || (isset($logsArray['description']) && !empty($logsArray['description']))
+        ) {
+            $this->logs($logsArray);
+        }
+
+        return $id;
     }
 
     /**
      * For saving Logs
      * @param array $logsArray
+     * @throws \Exception
      */
     public function logs($logsArray = [])
     {
@@ -213,11 +184,11 @@ class Logs extends AbstractHelper
         $logsModel = $this->logsFactory->create();
         $logsModel->setLogExecId($schedulerId)
             ->setCreatedAt($currentDate)
-            ->setEmarsysInfo(@$logsArray['emarsys_info'])
-            ->setDescription(@$logsArray['description'])
+            ->setEmarsysInfo(isset($logsArray['emarsys_info']) ? $logsArray['emarsys_info'] : '')
+            ->setDescription(isset($logsArray['description']) ? str_replace(',"',' ,"', $logsArray['description']) : '')
             ->setAction(isset($logsArray['action']) ? $logsArray['action'] : 'synced to emarsys')
-            ->setMessageType(@$logsArray['message_type'])
-            ->setStoreId(@$logsArray['store_id'])
+            ->setMessageType(isset($logsArray['message_type']) ? $logsArray['message_type'] : '')
+            ->setStoreId(isset($logsArray['store_id']) ? $logsArray['store_id'] : 0)
             ->setWebsiteId(isset($logsArray['website_id']) ? $logsArray['website_id'] : 0)
             ->setLogAction(isset($logsArray['log_action']) ? $logsArray['log_action'] : 'sync');
 
@@ -234,10 +205,10 @@ class Logs extends AbstractHelper
         if ($sendLogReport == '' && $websiteId == 0) {
             $sendLogReport = $this->scopeConfigInterface->getValue('logs/log_setting/log_report');
         }
-        if ($sendLogReport && $logsArray['message_type'] == 'Error') {
+        if ($sendLogReport && @$logsArray['message_type'] == 'Error') {
             if ($sendLogReport) {
-                $title = ucfirst($logsArray['job_code']) . " : Store - " . $logsArray['store_id'];
-                $description = $logsArray['description'];
+                $title = ucfirst(@$logsArray['job_code']) . " : Store - " . @$logsArray['store_id'];
+                $description = @$logsArray['description'];
                 $this->errorLogEmail($title, $description);
             }
         }
@@ -246,6 +217,9 @@ class Logs extends AbstractHelper
     /**
      * @param $title
      * @param $errorMsg
+     * @throws \Magento\Framework\Exception\LocalizedException
+     * @throws \Magento\Framework\Exception\MailException
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function errorLogEmail($title, $errorMsg)
     {
@@ -287,28 +261,6 @@ class Logs extends AbstractHelper
                 }
             }
             $this->inlineTranslation->resume();
-        }
-    }
-
-    /**
-     * @param $logId
-     * @param $mesage
-     * @param $websiteId
-     */
-    public function childLogs($logId, $mesage, $websiteId)
-    {
-        try {
-            $logsArray['id'] = $logId;
-            $logsArray['emarsys_info'] = 'Backgroud Time Based Optin Sync Success';
-            $logsArray['description'] = $mesage;
-            $logsArray['action'] = 'Backgroud Time Based Optin Sync';
-            $logsArray['message_type'] = 'Success';
-            $logsArray['log_action'] = 'True';
-            $logsArray['website_id'] = $websiteId;
-            $logsArray['store_id'] = $this->storeManager->getWebsite($websiteId)->getDefaultStore()->getId();
-            $this->logs($logsArray);
-        } catch (\Exception $e) {
-            $this->_logger->debug($e->getMessage());
         }
     }
 }

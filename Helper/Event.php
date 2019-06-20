@@ -6,17 +6,18 @@
  */
 namespace Emarsys\Emarsys\Helper;
 
-use Magento\Framework\App\Helper\AbstractHelper;
-use Magento\Framework\App\Helper\Context;
-use Magento\Framework\Webapi\Soap;
-use Magento\Config\Model\ResourceModel\Config;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
-use Emarsys\Emarsys\Model\ResourceModel\Event as EmarsysResourceModelEvent;
-use Magento\Store\Model\StoreManagerInterface;
-use Emarsys\Emarsys\Model\Logs as EmarsysModelLogs;
-use Magento\AdminNotification\Model\InboxFactory;
-use Emarsys\Emarsys\Model\EmarsyseventsFactory;
+use Magento\{
+    Framework\App\Helper\AbstractHelper,
+    Framework\App\Helper\Context,
+    Store\Model\StoreManagerInterface  as StoreManager,
+    AdminNotification\Model\InboxFactory
+};
+use Emarsys\Emarsys\{
+    Model\ResourceModel\Event as EmarsysResourceModelEvent,
+    Model\EmarsyseventsFactory,
+    Helper\Data as EmarsysHelper,
+    Model\Api\Api as EmarsysModelApiApi
+};
 
 /**
  * Class Event
@@ -30,34 +31,41 @@ class Event extends AbstractHelper
     protected $logger;
 
     /**
-     * @var Data
+     * @var EmarsysHelper
      */
-    protected $dataHelper;
+    protected $emarsysHelper;
+
+    /**
+     * @var StoreManager
+     */
+    protected $storeManager;
+
+    /**
+     * @var EmarsysModelApiApi
+     */
+    protected $api;
 
     /**
      * Event constructor.
-     * @param Data $dataHelper
+     * @param EmarsysHelper $emarsysHelper
      * @param EmarsysResourceModelEvent $resourceModelEvent
      * @param Context $context
-     * @param StoreManagerInterface $storeManager
-     * @param EmarsysModelLogs $emarsysLogs
+     * @param StoreManager $storeManager
      * @param InboxFactory $adminNotification
      * @param EmarsyseventsFactory $emarsysEvents
      */
     public function __construct(
-        Data $dataHelper,
+        EmarsysHelper $emarsysHelper,
         EmarsysResourceModelEvent $resourceModelEvent,
         Context $context,
-        StoreManagerInterface $storeManager,
-        EmarsysModelLogs $emarsysLogs,
+        StoreManager $storeManager,
         InboxFactory $adminNotification,
         EmarsyseventsFactory $emarsysEvents
     ) {
         ini_set('default_socket_timeout', 1000);
         $this->logger = $context->getLogger();
         $this->storeManager = $storeManager;
-        $this->dataHelper = $dataHelper;
-        $this->emarsysLogs = $emarsysLogs;
+        $this->emarsysHelper = $emarsysHelper;
         $this->resourceModelEvent = $resourceModelEvent;
         $this->adminNotification = $adminNotification;
         $this->emarsysEvents = $emarsysEvents;
@@ -65,38 +73,53 @@ class Event extends AbstractHelper
 
     /**
      * @return bool|mixed
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getEventSchema()
     {
+        $store = $this->storeManager->getStore();
+        $storeId = $store->getId();
         try {
-            $response = $this->dataHelper->send('GET', 'event');
-            $jsonDecode = \Zend_Json::decode($response);
-            return $jsonDecode;
+            $this->api->setWebsiteId($store->getWebsiteId());
+            $response = $this->api->sendRequest('GET', 'event');
+            return $response['body'];
         } catch (\Exception $e) {
-            $storeId = $this->storeManager->getStore()->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'getEventSchema');
-            return false;
+            $this->emarsysHelper->addErrorLog(
+                'getEventSchema',
+                $e->getMessage(),
+                $storeId,
+                'Event::getEventSchema'
+            );
         }
+        return false;
     }
 
     /**
      * @return bool|mixed
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getEventTemplateSchema()
     {
+        $store = $this->storeManager->getStore();
+        $storeId = $store->getId();
         try {
-            $response = $this->dataHelper->send('GET', 'email/templates');
-            $jsonDecode = \Zend_Json::decode($response);
-            return $jsonDecode;
+            $this->api->setWebsiteId($store->getWebsiteId());
+            $response = $this->api->sendRequest('GET', 'email/templates');
+            return $response['body'];
         } catch (\Exception $e) {
-            $storeId = $this->storeManager->getStore()->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'getEventTemplateSchema');
-            return false;
+            $this->emarsysHelper->addErrorLog(
+                'getEventTemplateSchema',
+                $e->getMessage(),
+                $storeId,
+                'Event::getEventTemplateSchema'
+            );
         }
+        return false;
     }
 
     /**
      * @return bool
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function saveEmarsysEventSchemaNotification()
     {
@@ -106,50 +129,49 @@ class Event extends AbstractHelper
             $adminNotiColl->setTitle('Emarsys Events Updates');
             $adminNotiColl->setDescription('Emarsys events has been update, Please update the emarsys event schema');
             $adminNotiColl->save();
+            return true;
         } catch (\Exception $e) {
             $storeId = $this->storeManager->getStore()->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'saveEmarsysEventSchemaNotification');
-            return false;
+            $this->emarsysHelper->addErrorLog(
+                'saveEmarsysEventSchemaNotification',
+                $e->getMessage(),
+                $storeId,
+                'Event::saveEmarsysEventSchemaNotification'
+            );
         }
+        return false;
+
     }
 
     /**
      * @param $websiteId
      * @return array|bool
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getLocalEmarsysEvents($websiteId)
     {
+        $emarsysLocalIds = [];
         try {
-            $emarsysLocalIds = [];
-            $defaultStore = $this->storeManager->getWebsite($websiteId)->getDefaultStore()->getId();
+            $defaultStore = $this->storeManager->getWebsite($websiteId)->getDefaultStore();
+            if ($defaultStore) {
+                $defaultStore = $defaultStore->getId();
+            } else {
+                throw new \Exception(__('There is no default store selected for website id %1', $websiteId));
+            }
             $emarsysContactFields = $this->resourceModelEvent->getEmarsysEvents($defaultStore);
 
             foreach ($emarsysContactFields as $_emarsysContactField) {
                 $emarsysLocalIds[] = $_emarsysContactField['event_id'];
             }
-            return $emarsysLocalIds;
         } catch (\Exception $e) {
             $storeId = $this->storeManager->getStore()->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'getLocalEmarsysEvents');
-            return false;
+            $this->emarsysHelper->addErrorLog(
+                'getLocalEmarsysEvents',
+                $e->getMessage(),
+                $storeId,
+                'Event::getLocalEmarsysEvents'
+            );
         }
-    }
-
-    /**
-     * @return bool
-     */
-    public function getEmar()
-    {
-        try {
-            $adminNotiColl = $this->emarsysEvents->create()->getCollection();
-            print_r($adminNotiColl->getData());
-            foreach ($adminNotiColl as $_adminNotiColl) {
-                print_r($_adminNotiColl->getData());
-            }
-        } catch (\Exception $e) {
-            $storeId = $this->storeManager->getStore()->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'getEmar');
-            return false;
-        }
+        return $emarsysLocalIds;
     }
 }

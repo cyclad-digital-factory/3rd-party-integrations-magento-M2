@@ -7,16 +7,18 @@
 
 namespace Emarsys\Emarsys\Observer;
 
-use Magento\Framework\Event\ObserverInterface;
-use Magento\Framework\Event\Observer;
-use Magento\Framework\Registry;
-use Magento\Store\Model\StoreManagerInterface;
-use Magento\Store\Model\ScopeInterface;
-use Magento\Customer\Model\CustomerFactory;
-use Emarsys\Emarsys\Helper\Data;
-use Emarsys\Emarsys\Model\Api\Contact;
-use Emarsys\Emarsys\Model\Logs;
-use Emarsys\Emarsys\Model\ResourceModel\Customer;
+use Magento\{
+    Framework\Event\ObserverInterface,
+    Framework\Event\Observer,
+    Framework\Registry,
+    Store\Model\StoreManagerInterface,
+    Customer\Model\CustomerFactory
+};
+use Emarsys\Emarsys\{
+    Helper\Data as EmarsysHelper,
+    Model\Api\Contact,
+    Model\ResourceModel\Customer
+};
 
 /**
  * Class AfterAddressSaveObserver
@@ -25,71 +27,64 @@ use Emarsys\Emarsys\Model\ResourceModel\Customer;
 class AfterAddressSaveObserver implements ObserverInterface
 {
     /**
-     * @var Data
+     * @var EmarsysHelper
      */
-    private $dataHelper;
+    protected $emarsysHelper;
 
     /**
      * @var Registry
      */
-    private $registry;
+    protected $registry;
 
     /**
      * @var Contact
      */
-    private $contactModel;
+    protected $contactModel;
 
     /**
      * @var StoreManagerInterface
      */
-    private $storeManager;
+    protected $storeManager;
 
     /**
      * @var Customer
      */
-    private $customerResourceModel;
-
-    /**
-     * @var Logs
-     */
-    private $emarsysLogs;
+    protected $customerResourceModel;
 
     /**
      * @var CustomerFactory
      */
-    private $customerFactory;
+    protected $customerFactory;
 
     /**
      * AfterAddressSaveObserver constructor.
      *
-     * @param Data $dataHelper
+     * @param EmarsysHelper $emarsysHelper
      * @param Registry $registry
      * @param Contact $contactModel
      * @param StoreManagerInterface $storeManager
      * @param Customer $customerResourceModel
-     * @param Logs $emarsysLogs
      * @param CustomerFactory $customerFactory
      */
     public function __construct(
-        Data $dataHelper,
+        EmarsysHelper $emarsysHelper,
         Registry $registry,
         Contact $contactModel,
         StoreManagerInterface $storeManager,
         Customer $customerResourceModel,
-        Logs $emarsysLogs,
         CustomerFactory $customerFactory
     ) {
-        $this->dataHelper = $dataHelper;
+        $this->emarsysHelper = $emarsysHelper;
         $this->registry = $registry;
         $this->contactModel = $contactModel;
         $this->storeManager = $storeManager;
         $this->customerResourceModel = $customerResourceModel;
-        $this->emarsysLogs = $emarsysLogs;
         $this->customerFactory = $customerFactory;
     }
 
     /**
      * @param Observer $observer
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function execute(Observer $observer)
     {
@@ -104,33 +99,27 @@ class AfterAddressSaveObserver implements ObserverInterface
             $defaultBillingId = $customerObj->getDefaultBilling();
             $defaultShippingId = $customerObj->getDefaultShipping();
 
-            if (!in_array($customerAddress->getId(), [$defaultBillingId, $defaultShippingId])) {
-                return;
-            }
-
-            if (!$this->dataHelper->isEmarsysEnabled($websiteId)) {
-                return;
-            }
-
-            $realTimeStatus = $this->customerResourceModel->getDataFromCoreConfig(
-                Data::XPATH_EMARSYS_REALTIME_SYNC,
-                ScopeInterface::SCOPE_WEBSITE,
-                $websiteId
-            );
-
-            $storeId = $customerObj->getStoreId();
-            if ($realTimeStatus) {
-                $customerVar = 'create_customer_variable_' . $customerId;
-                if ($this->registry->registry($customerVar) == 'created') {
+            if (!empty($defaultBillingId) || !empty($defaultShippingId)) {
+                if (!in_array($customerAddress->getId(), [$defaultBillingId, $defaultShippingId])) {
                     return;
                 }
-                $this->contactModel->syncContact($customerId, $websiteId, $storeId);
-                $this->registry->register($customerVar, 'created');
-            } else {
-                $this->dataHelper->syncFail($customerId, $websiteId, $storeId, 0, 1);
             }
+
+            if (!$this->emarsysHelper->isContactsSynchronizationEnable($websiteId)) {
+                return;
+            }
+
+            $storeId = $customerObj->getStoreId();
+
+            $customerVar = 'create_customer_variable_' . $customerId;
+            if ($this->registry->registry($customerVar) == 'created') {
+                return;
+            }
+            $this->contactModel->syncContact($customer, $websiteId, $storeId, 0, $customerAddress);
+            $this->registry->register($customerVar, 'created');
         } catch (\Exception $e) {
-            $this->emarsysLogs->addErrorLog(
+            $this->emarsysHelper->addErrorLog(
+                EmarsysHelper::LOG_MESSAGE_CUSTOMER,
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'AfterAddressSaveObserver::execute()'

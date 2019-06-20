@@ -78,15 +78,12 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
         $filterCode = $this->getRequest()->getParam('filtercode');
 
         $storeId = $this->request->getParam('store');
+        $collection = $this->logScheduleFactory->create()
+            ->getCollection()
+            ->setOrder('created_at', 'desc');
         if ($storeId) {
-            $collection = $this->logScheduleFactory->create()
-                ->getCollection()
-                ->setOrder('created_at', 'desc')
-                ->addFieldToFilter('store_id', $storeId);
-        } else {
-            $collection = $this->logScheduleFactory->create()
-                ->getCollection()
-                ->setOrder('created_at', 'desc');
+            $collection->addFieldToFilter('store_id', $storeId);
+
         }
 
         if ($filterCode != '') {
@@ -119,7 +116,6 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
                 'Order Mapping' => 'Order Mapping',
                 'Product Mapping' => 'Product Mapping',
                 'Event Mapping' => 'Event Mapping',
-                'initialdbload' => 'Initial Load',
                 'transactional_mail' => 'Transactional Mail',
                 'Backgroud Time Based Optin Sync' => 'Background Time Based Optin Sync',
                 'Sync contact Export' => 'Sync contact Export',
@@ -223,17 +219,10 @@ class Grid extends \Magento\Backend\Block\Widget\Grid\Extended
      */
     public function decorateTimeFrameCallBack($value)
     {
-        if ($value) {
-            return $this->decorateTime($value, false, null);
+        if ($value && $value != '0000-00-00 00:00:00') {
+            return $this->timezone->formatDateTime($value, 2);
+        } else {
+            return '';
         }
-    }
-
-    /**
-     * @param $value
-     * @return string
-     */
-    public function decorateTime($value)
-    {
-        return $this->timezone->date($value)->format('M d, Y h:i:s A');
     }
 }

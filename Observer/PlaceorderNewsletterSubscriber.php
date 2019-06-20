@@ -2,13 +2,20 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 
 namespace Emarsys\Emarsys\Observer;
 
-use Psr\Log\LoggerInterface;
-use Magento\Framework\Event\ObserverInterface;
+use Emarsys\Emarsys\Helper\Data as EmarsysHelper;
+use Magento\{
+    Checkout\Model\Session,
+    Framework\Event\Observer,
+    Newsletter\Model\SubscriberFactory,
+    Sales\Model\Order,
+    Store\Model\StoreManagerInterface,
+    Framework\Event\ObserverInterface
+};
 
 /**
  * Class PlaceorderNewsletterSubscriber
@@ -17,46 +24,72 @@ use Magento\Framework\Event\ObserverInterface;
 class PlaceorderNewsletterSubscriber implements ObserverInterface
 {
     /**
+     * @var Order
+     */
+    protected $order;
+
+    /**
+     * @var EmarsysHelper
+     */
+    protected $emarsysHelper;
+
+    /**
+     * @var StoreManagerInterface
+     */
+    protected $storeManager;
+
+    /**
+     * @var SubscriberFactory
+     */
+    protected $subscriberFactory;
+
+    /**
+     * @var Session
+     */
+    protected $checkoutSession;
+
+    /**
      * PlaceorderNewsletterSubscriber constructor.
-     * @param \Magento\Store\Model\StoreManagerInterface $storeManager
-     * @param \Magento\Checkout\Model\Session $checkoutSession
-     * @param \Emarsys\Emarsys\Model\Logs $emarsysLogs
-     * @param \Emarsys\Emarsys\Helper\Data $dataHelper
-     * @param \Magento\Newsletter\Model\SubscriberFactory $subscriberFactory
-     * @param \Emarsys\Emarsys\Model\ResourceModel\Customer $customerResourceModel
-     * @param \Magento\Sales\Model\Order $orderModel
+     * @param StoreManagerInterface $storeManager
+     * @param Session $checkoutSession
+     * @param EmarsysHelper $emarsysHelper
+     * @param SubscriberFactory $subscriberFactory
+     * @param Order $orderModel
      */
     public function __construct(
-        \Magento\Store\Model\StoreManagerInterface $storeManager,
-        \Magento\Checkout\Model\Session $checkoutSession,
-        \Emarsys\Emarsys\Model\Logs $emarsysLogs,
-        \Emarsys\Emarsys\Helper\Data $dataHelper,
-        \Magento\Newsletter\Model\SubscriberFactory $subscriberFactory,
-        \Emarsys\Emarsys\Model\ResourceModel\Customer $customerResourceModel,
-        \Magento\Sales\Model\Order $orderModel
+        StoreManagerInterface $storeManager,
+        Session $checkoutSession,
+        EmarsysHelper $emarsysHelper,
+        SubscriberFactory $subscriberFactory,
+        Order $orderModel
     ) {
-        $this->_order = $orderModel;
-        $this->emarsysLogs = $emarsysLogs;
-        $this->customerResourceModel = $customerResourceModel;
-        $this->_storeManager = $storeManager;
-        $this->dataHelper = $dataHelper;
-        $this->_subscriberFactory = $subscriberFactory;
-        $this->_checkoutSession = $checkoutSession;
+        $this->order = $orderModel;
+        $this->emarsysHelper = $emarsysHelper;
+        $this->storeManager = $storeManager;
+        $this->subscriberFactory = $subscriberFactory;
+        $this->checkoutSession = $checkoutSession;
     }
 
-    public function execute(\Magento\Framework\Event\Observer $observer)
+    /**
+     * @param Observer $observer
+     */
+    public function execute(Observer $observer)
     {
         try {
             $orderID = $observer->getEvent()->getOrderIds()[0];
-            $order = $this->_order->load($orderID);
-            $emailID = $order->getCustomerEmail();
-            $checkoutNewsSub = $this->_checkoutSession->getData()['newsletter_sub_checkout'];
+            $order = $this->order->load($orderID);
+            $checkoutNewsSub = $this->checkoutSession->getData()['newsletter_sub_checkout'];
             if ($checkoutNewsSub) {
-                $this->_subscriberFactory->create()->subscribe($emailID);
+                $this->subscriberFactory->create()->subscribe($order->getCustomerEmail());
             }
         } catch (\Exception $e) {
-            $storeId = $this->_storeManager->getId();
-            $this->emarsysLogs->addErrorLog($e->getMessage(), $storeId, 'PlaceorderNewsletterSubscriber');
+            $storeId = $this->storeManager->getId();
+            $this->emarsysHelper->addErrorLog(
+                EmarsysHelper::LOG_MESSAGE_SUBSCRIBER,
+                $e->getMessage(),
+                $storeId,
+                'PlaceorderNewsletterSubscriber'
+            );
         }
     }
 }

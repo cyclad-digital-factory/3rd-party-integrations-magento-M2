@@ -2,23 +2,27 @@
 /**
  * @category   Emarsys
  * @package    Emarsys_Emarsys
- * @copyright  Copyright (c) 2017 Emarsys. (http://www.emarsys.net/)
+ * @copyright  Copyright (c) 2018 Emarsys. (http://www.emarsys.net/)
  */
 namespace Emarsys\Emarsys\Block;
 
-use Magento\Framework\View\Element\Template\Context;
-use Emarsys\Emarsys\Model\ResourceModel\Customer;
-use Magento\Checkout\Model\CartFactory;
-use Magento\Sales\Model\OrderFactory;
-use Magento\Framework\App\Request\Http;
-use Magento\Catalog\Model\CategoryFactory;
-use Magento\Catalog\Model\ProductFactory;
-use Magento\Customer\Model\Session as CustomerSession;
-use Emarsys\Emarsys\Helper\Data;
-use Emarsys\Emarsys\Model\Logs;
-use Magento\Framework\Registry;
-use Magento\Sales\Model\ResourceModel\Order\Item\CollectionFactory as OrderItemCollectionFactory;
-use Magento\Store\Model\ScopeInterface;
+use Magento\{
+    Framework\View\Element\Template\Context,
+    Checkout\Model\CartFactory,
+    Sales\Model\OrderFactory,
+    Framework\App\Request\Http,
+    Catalog\Model\CategoryFactory,
+    Catalog\Model\ProductFactory,
+    Customer\Model\Session as CustomerSession,
+    Framework\Registry,
+    Sales\Model\ResourceModel\Order\Item\CollectionFactory as OrderItemCollectionFactory,
+    Store\Model\ScopeInterface
+};
+use Emarsys\Emarsys\{
+    Model\Logs,
+    Model\ResourceModel\Customer,
+    Helper\Data
+};
 
 /**
  * Class JavascriptTracking
@@ -100,6 +104,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * @param Data $emarsysHelper
      * @param Logs $emarsysLogs
      * @param Registry $registry
+     * @param OrderItemCollectionFactory $orderItemCollectionFactory
      * @param array $data
      */
     public function __construct(
@@ -146,6 +151,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Current Category
      *
      * @return string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getCurrentCategory()
     {
@@ -172,10 +178,11 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
                     $categoryName = implode(" > ", $childCats);
                 }
 
-                $result =  $categoryName;
+                $result = addcslashes($categoryName, "'");
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getCurrentCategory',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getCurrentCategory()'
@@ -189,6 +196,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Current Product Sku
      *
      * @return string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getCurrentProductSku()
     {
@@ -208,6 +216,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getCurrentProductSku',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getCurrentProductSku()'
@@ -221,6 +230,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Page Handle From Db
      *
      * @return array
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getPageHandleStatus()
     {
@@ -267,6 +277,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Search Param
      *
      * @return bool|mixed
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getSearchResult()
     {
@@ -278,6 +289,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getSearchResult',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getSearchResult()'
@@ -295,7 +307,20 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
     public function getAjaxUpdateUrl()
     {
         return $this->getUrl(
-            'emarsys/index/ajaxupdate',
+            'emarsys/index/ajaxUpdate',
+            ['_secure' => true]
+        );
+    }
+
+    /**
+     * Get Ajax Update Url
+     *
+     * @return string
+     */
+    public function getAjaxUpdateCartUrl()
+    {
+        return $this->getUrl(
+            'emarsys/index/ajaxUpdateCart',
             ['_secure' => true]
         );
     }
@@ -304,6 +329,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Merchant Id from DB
      *
      * @return array
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getMerchantId()
     {
@@ -317,7 +343,8 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
     /**
      * Get Status of Web Extended Javascript integration from DB
      *
-     * @return array
+     * @return bool
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getJsEnableStatusForAllPages()
     {
@@ -353,6 +380,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Order Information
      *
      * @return array|bool
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getOrderData()
     {
@@ -378,20 +406,26 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
                         $collection = $this->orderItemCollectionFactory->create()
                             ->addAttributeToFilter('parent_item_id', ['eq' => $item['item_id']])
                             ->load();
-                        $bundlePrice = 0;
+                        $bundleBaseDiscount = 0;
+                        $bundleDiscount = 0;
                         foreach ($collection as $collPrice) {
-                            $bundlePrice += $collPrice['base_discount_amount'];
+                            $bundleBaseDiscount += $collPrice['base_discount_amount'];
+                            $bundleDiscount += $collPrice['discount_amount'];
                         }
                         if ($taxIncluded) {
-                            $price = $useBaseCurrency? ($item->getBaseRowTotal() + $item->getBaseTaxAmount()) - ($bundlePrice) : ($item->getRowTotal() + $item->getTaxAmount()) - ($bundlePrice);
+                            $price = $useBaseCurrency ? ($item->getBaseRowTotal() + $item->getBaseTaxAmount()) - ($bundleBaseDiscount) : ($item->getRowTotal() + $item->getTaxAmount()) - ($bundleDiscount);
                         } else {
-                            $price = $useBaseCurrency? $item->getBaseRowTotal() - $bundlePrice : $item->getRowTotal() - $bundlePrice;
+                            $price = $useBaseCurrency ? $item->getBaseRowTotal() - $bundleBaseDiscount : $item->getRowTotal() - $bundleDiscount;
                         }
                     } else {
                         if ($taxIncluded) {
-                            $price = $useBaseCurrency? ($item->getBaseRowTotal()  + $item->getBaseTaxAmount()) - $item->getBaseDiscountAmount() : ($item->getRowTotal() + $item->getTaxAmount()) - $item->getDiscountAmount();
+                            $price = $useBaseCurrency
+                                ? $item->getBaseRowTotalInclTax()
+                                : $item->getRowTotalInclTax();
                         } else {
-                            $price = $useBaseCurrency? $item->getBaseRowTotal() - $item->getBaseDiscountAmount() : $item->getRowTotal() - $item->getDiscountAmount();
+                            $price = $useBaseCurrency
+                                ? $item->getBaseRowTotal()
+                                : $item->getRowTotal();
                         }
                     }
 
@@ -406,12 +440,13 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
                 $result[$order->getIncrementId()] = $orderData;
             }
 
-            if (count($result) > 0) {
+            if (count($result)) {
                 $this->customerSession->setWebExtendNewOrderIds([]);
                 return $result;
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getOrderData',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getOrderData()'
@@ -425,6 +460,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Website Id
      *
      * @return int
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getWebsiteId()
     {
@@ -435,6 +471,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Cart Items Data in Json Format
      *
      * @return bool|string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getCartItemsJsonData()
     {
@@ -449,8 +486,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
                     if ($item->getParentItemId()) {
                         continue;
                     }
-                    $productSku = $this->getLoadProduct($item->getProductId())->getSku();
-                    $price = $useBaseCurrency? $item->getBaseRowTotal() : $item->getRowTotal();
+                    $price = $useBaseCurrency ? $item->getBaseRowTotal() : $item->getRowTotal();
                     $uniqueIdentifier = $this->emarsysHelper->getUniqueIdentifier();
 
                     if ($uniqueIdentifier == "product_id") {
@@ -459,6 +495,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
                         $sku = addslashes($item->getSku());
                     }
                     $qty = $item->getQty();
+
                     $jsData[] = "{item: '" . addslashes($sku) . "', price: $price, quantity: $qty}";
                 }
 
@@ -466,6 +503,7 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getCartItemsJsonData',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getCartItemsJsonData()'
@@ -479,55 +517,52 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get Customer Id
      *
      * @return bool|string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getCustomerId()
     {
+        $customerId = false;
         try {
             if ($this->customerSession->isLoggedIn()) {
-                return $this->getLoggedInCustomerEmail();
+                $customerId = $this->getLoggedInCustomerEmail('customer_id');
             } else {
                 $customerId = $this->customerSession->getWebExtendCustomerId();
-
-                if (!empty($customerId)) {
-                    $this->customerSession->setWebExtendCustomerId('');
-                    $this->customerSession->setWebExtendCustomerEmail('');
-
-                    return $customerId;
-                }
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getCustomerId',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getCustomerId'
             );
         }
 
-        return false;
+        return $customerId;
     }
 
     /**
-     * Get logged in customer email
+     * Get logged in customer email or id
      *
+     * @param 'customer_id'|'email_address' $customerBy
      * @return bool|string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
-    public function getLoggedInCustomerEmail()
+    public function getLoggedInCustomerEmail($customerBy)
     {
         $loggedInCustomerEmail = false;
         try {
-            $customerBy = $this->emarsysHelper->getIdentityRegistered();
-
             if ($this->customerSession->isLoggedIn()) {
                 $customer = $this->customerSession->getCustomer();
 
                 if ($customerBy == "customer_id") {
-                    $loggedInCustomerEmail = $customer->getEntityId();
+                    $loggedInCustomerEmail = $customer->getId();
                 } else {
                     $loggedInCustomerEmail = addslashes($customer->getEmail());
                 }
             }
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getLoggedInCustomerEmail',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getLoggedInCustomerEmail()'
@@ -541,30 +576,22 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
      * Get customer email
      *
      * @return string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
      */
     public function getCustomerEmailAddress()
     {
         $customerEmail = false;
-        if ($this->emarsysHelper->getIdentityRegistered() != 'email_address') {
-            return $customerEmail;
-        }
         try {
             $sessionEmail = $this->customerSession->getWebExtendCustomerEmail();
 
             if ($this->customerSession->isLoggedIn()) {
-                $loggedInCustomerEmail = $this->getLoggedInCustomerEmail();
-                if (\Zend_Validate::is($loggedInCustomerEmail, 'EmailAddress')) {
-                    $customerEmail = $loggedInCustomerEmail;
-                }
-            } elseif (isset($sessionEmail)) {
-                if (!empty($sessionEmail) && \Zend_Validate::is($sessionEmail, 'EmailAddress')) {
-                    $customerEmail = $sessionEmail;
-                }
+                $customerEmail = $this->getLoggedInCustomerEmail('email_address');
+            } elseif (isset($sessionEmail) && !empty($sessionEmail)) {
+                $customerEmail = addslashes($sessionEmail);
             }
-            $this->customerSession->setWebExtendCustomerEmail('');
-            $this->customerSession->setWebExtendCustomerId('');
         } catch (\Exception $e) {
             $this->emarsysLogs->addErrorLog(
+                'getCustomerEmailAddress',
                 $e->getMessage(),
                 $this->storeManager->getStore()->getId(),
                 'getCustomerEmailAddress()'
@@ -572,5 +599,16 @@ class JavascriptTracking extends \Magento\Framework\View\Element\Template
         }
 
         return $customerEmail;
+    }
+
+    /**
+     * Get Store Code
+     *
+     * @return string
+     * @throws \Magento\Framework\Exception\NoSuchEntityException
+     */
+    public function getStoreCode()
+    {
+        return $this->storeManager->getStore()->getCode();
     }
 }
